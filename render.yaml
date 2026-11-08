@@ -1,0 +1,29 @@
+# ThinTreé — FREE deployment: Render Free web service + Neon Free PostgreSQL.
+# No paid instances, persistent disks, or paid Render databases.
+# Set private environment secrets in the Render Dashboard; never commit them.
+services:
+  - type: web
+    name: thintreee-birthday
+    runtime: node
+    plan: free
+    buildCommand: npm install --no-audit --no-fund && npm run build:client
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_VERSION
+        value: 22.16.0
+      - key: DATABASE_URL
+        sync: false
+      # Set these privately ONLY during the initial deployment; remove afterward.
+      - key: INIT_FAMILY_ANSWER
+        sync: false
+      - key: INIT_SCHOOL_ANSWER
+        sync: false
+      - key: INIT_UNIVERSITY_ANSWERS
+        sync: false
+      - key: INIT_ADMIN_PASSWORD
+        sync: false
