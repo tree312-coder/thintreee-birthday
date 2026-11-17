@@ -137,6 +137,13 @@ async function api(req:any,res:any,path:string) {
     const gift=await db.prepare('SELECT slug,canonical_key AS canonicalKey,title FROM gifts WHERE id=?').get(reserveRoute[1]) as {slug:string,canonicalKey:string,title:string}|undefined;
     if(!gift)throw new HttpError(404,'Món quà không tồn tại.');
     await mustSection(req,gift.slug);
+    const mode=await db.prepare('SELECT allow_multiple AS allowMultiple FROM gift_pick_modes WHERE canonical_key=?').get(gift.canonicalKey) as {allowMultiple:number}|undefined;
+    if(Number(mode?.allowMultiple)===1){
+      const id=randomUUID();
+      await db.prepare('INSERT INTO gift_picks(id,canonical_key,slug,created_at) VALUES(?,?,?,?)').run(id,gift.canonicalKey,gift.slug,Date.now());
+      const count=await db.prepare('SELECT COUNT(*) AS c FROM gift_picks WHERE canonical_key=?').get(gift.canonicalKey) as {c:number};
+      return json(res,200,{ok:true,multiple:true,pickCount:Number(count.c),canonicalKey:gift.canonicalKey});
+    }
     const result=await db.prepare("UPDATE gift_claims SET status='reserved',changed_at=? WHERE canonical_key=? AND status='available'").run(Date.now(),gift.canonicalKey);
     if(result.changes!==1)return json(res,409,{error:'Món quà này đã có người chọn trước rồi. Hãy chọn món khác nhé!'});
     return json(res,200,{ok:true,status:'reserved',canonicalKey:gift.canonicalKey});
@@ -197,7 +204,13 @@ async function api(req:any,res:any,path:string) {
   if(method==='POST'&&path==='/api/admin/gifts'){
     const d=await readJSON(req),slug=safeText(d.slug,30);
     if(!isSlug(slug))throw new HttpError(400,'Nhóm không hợp lệ.');
-    const title=safeText(d.title,180), canonicalKey=safeText(d.canonicalKey||title.toLocaleLowerCase('vi').replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-|-$/g,''),150);
+    const title=safeText(d.title,180);
+    const shared=typeof d.existingKey==='string'?d.existingKey.trim():'';
+    const canonicalKey=safeText(shared||d.canonicalKey||title.toLocaleLowerCase('vi').replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-|-$/g,''),150);
+    if(shared){
+      const existing=await db.prepare('SELECT canonical_key FROM gifts WHERE canonical_key=? LIMIT 1').get(canonicalKey);
+      if(!existing)throw new HttpError(400,'Món quà liên kết không còn tồn tại. Hãy tải lại Admin.');
+    }
     const id=randomUUID();
     await db.prepare('INSERT INTO gifts(id,slug,canonical_key,title,description,note,illustration,image_url,position) VALUES(?,?,?,?,?,?,?,?,?)').run(
       id,slug,canonicalKey,title,safeText(d.description||title,600),String(d.note||'').slice(0,600),String(d.illustration||'✧').slice(0,10),assetUrl(d.imageUrl||''),
@@ -212,6 +225,7 @@ async function api(req:any,res:any,path:string) {
     if(!row)throw new HttpError(404,'Không tìm thấy món quà.');
     await db.prepare('DELETE FROM gifts WHERE id=?').run(giftAdmin[1]);
     await db.prepare('DELETE FROM gift_claims WHERE canonical_key=? AND NOT EXISTS (SELECT 1 FROM gifts WHERE canonical_key=?)').run(row.canonicalKey,row.canonicalKey);
+    await db.prepare('DELETE FROM gift_pick_modes WHERE canonical_key=? AND NOT EXISTS (SELECT 1 FROM gifts WHERE canonical_key=?)').run(row.canonicalKey,row.canonicalKey);
     return json(res,200,{ok:true});
   }
   if(giftAdmin&&method==='PUT'){
@@ -220,6 +234,20 @@ async function api(req:any,res:any,path:string) {
     const title=safeText(d.title,180), desc=safeText(d.description,600), note=typeof d.note==='string'?d.note.slice(0,600):'',
       illustration=String(d.illustration||'✧').slice(0,10),url=assetUrl(d.imageUrl||'');
     await db.prepare('UPDATE gifts SET title=?,description=?,note=?,illustration=?,image_url=? WHERE id=?').run(title,desc,note,illustration,url,giftAdmin[1]);
+    return json(res,200,{ok:true});
+  }
+  if(method==='PUT'&&path==='/api/admin/gift-pick-mode'){
+    const d=await readJSON(req),key=safeText(d.canonicalKey,150);
+    if(typeof d.allowMultiple!=='boolean')throw new HttpError(400,'Chế độ chọn quà không hợp lệ.');
+    const exists=await db.prepare('SELECT 1 AS ok FROM gifts WHERE canonical_key=? LIMIT 1').get(key);
+    if(!exists)throw new HttpError(404,'Món quà không tồn tại.');
+    await db.transaction(async()=>{
+      await db.prepare('INSERT INTO gift_pick_modes(canonical_key,allow_multiple) VALUES(?,?) ON CONFLICT(canonical_key) DO UPDATE SET allow_multiple=excluded.allow_multiple').run(key,d.allowMultiple?1:0);
+      if(!d.allowMultiple){
+        const picked=await db.prepare('SELECT COUNT(*) AS c FROM gift_picks WHERE canonical_key=?').get(key) as {c:number};
+        if(Number(picked.c)>0)await db.prepare("UPDATE gift_claims SET status='reserved',changed_at=? WHERE canonical_key=? AND status='available'").run(Date.now(),key);
+      }
+    });
     return json(res,200,{ok:true});
   }
   if(method==='PUT'&&path==='/api/admin/gift-status') {
