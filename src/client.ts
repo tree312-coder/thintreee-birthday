@@ -2,7 +2,7 @@
    All secrets, private page data, gift updates and admin edits are handled by the Node backend. */
 type GateSlug='family'|'high-school'|'university';
 type Mode='family'|'school'|'university';
-type Gift={id:string;slug:GateSlug;canonicalKey:string;title:string;description:string;note:string;illustration:string;imageUrl:string;status:'available'|'reserved'|'purchased';position:number};
+type Gift={id:string;slug:GateSlug;canonicalKey:string;title:string;description:string;note:string;illustration:string;imageUrl:string;status:'available'|'reserved'|'purchased';allowMultiple:number|boolean;pickCount:number;position:number};
 type Photo={id:string;slug:string;caption:string;kind:string;imageId:string|null;url:string|null;position:number};
 type Wish={id:string;slug:string;body:string;author:string;createdAt:number;isPublic?:number;approved?:number};
 type Timeline={id:string;slug:string;yearLabel:string;title:string;description:string;position:number};
@@ -176,7 +176,7 @@ function wishlistCards(data:SectionData){
   return `<div class="wishlist-results ${revealOpen?'revealed':''}" id="gift-results" ${revealOpen?'':'inert'}>
     <div class="wishlist-top"><span>${esc(String(gifts.length).padStart(2,'0'))} LITTLE WISHES</span><span>${available} STILL UNCLAIMED</span></div>
     <div class="section-head-row"><div><h2>The things that <em>make me smile.</em></h2><p>Nhấn vào từng món quà để xem chi tiết. Trạng thái được cập nhật cho tất cả nhóm.</p></div><button class="btn btn-outline" data-action="surprise">✦ Surprise Me</button></div>
-    <div class="gift-grid">${gifts.map((g,i)=>`<article class="gift-card" style="--i:${i}"><div class="gift-image" data-action="gift" data-id="${g.id}" role="button" tabindex="0" aria-label="Chi tiết ${esc(g.title)}">${g.imageUrl?`<img src="${esc(g.imageUrl)}" alt="${esc(g.title)}" loading="lazy">`:`<div class="gift-illustration">${esc(g.illustration)}</div>`}<span class="gift-index">${String(i+1).padStart(2,'0')}</span></div><div class="gift-info"><span class="gift-status ${g.status}"><i></i>${g.status==='available'?'AVAILABLE':g.status==='reserved'?'SOMEONE PICKED THIS':'ALREADY GIFTED'}</span><button data-action="gift" data-id="${g.id}" class="gift-name">${esc(g.title)}</button><p>${esc(g.description)}</p><div class="gift-bottom"><span>VIEW DETAILS ↗</span><button data-action="reserve" data-id="${g.id}" ${g.status!=='available'?'disabled':''} aria-label="${g.status==='available'?'Đánh dấu quà đã chọn':'Quà đã được chọn'}">${g.status==='available'?'♡ PICK THIS':g.status==='reserved'?'✓ PICKED':'✓ GIFTED'}</button></div></div></article>`).join('')}</div>
+    <div class="gift-grid">${gifts.map((g,i)=>`<article class="gift-card" style="--i:${i}"><div class="gift-image" data-action="gift" data-id="${g.id}" role="button" tabindex="0" aria-label="Chi tiết ${esc(g.title)}">${g.imageUrl?`<img src="${esc(g.imageUrl)}" alt="${esc(g.title)}" loading="lazy">`:`<div class="gift-illustration">${esc(g.illustration)}</div>`}<span class="gift-index">${String(i+1).padStart(2,'0')}</span></div><div class="gift-info"><span class="gift-status ${g.allowMultiple?'available':g.status}"><i></i>${g.allowMultiple?'MULTIPLE PICKS · '+Number(g.pickCount||0)+' NEW':g.status==='available'?'AVAILABLE':g.status==='reserved'?'SOMEONE PICKED THIS':'ALREADY GIFTED'}</span><button data-action="gift" data-id="${g.id}" class="gift-name">${esc(g.title)}</button><p>${esc(g.description)}</p><div class="gift-bottom"><span>VIEW DETAILS ↗</span><button data-action="reserve" data-id="${g.id}" ${!g.allowMultiple&&g.status!=='available'?'disabled':''} aria-label="${g.allowMultiple?'Thêm một lượt chọn quà':'Đánh dấu quà đã chọn'}">${g.allowMultiple?'♡ PICK THIS AGAIN':g.status==='available'?'♡ PICK THIS':g.status==='reserved'?'✓ PICKED':'✓ GIFTED'}</button></div></div></article>`).join('')}</div>
     <p class="gift-note">✳ Trạng thái quà được chia sẻ giữa các wishlist có cùng món. Không hiển thị danh tính người chọn. Chỉ chủ website có thể hoàn tác.</p>
     </div>`;
 }
@@ -231,8 +231,8 @@ function adminContent(d:AdminData){
 function adminGifts(d:AdminData){
   const gifts=d.gifts.filter(g=>g.slug===adminGroup);
   return `<section class="admin-pane"><h3>${esc(config[adminGroup].name)} wishlist <span class="admin-subcount">${gifts.length} gifts</span></h3><p>Add gifts, edit details or change shared reservation status. Matching canonical keys prevent duplicate gifts across groups.</p>
-   <form class="admin-add-grid" data-form="add-gift" data-slug="${adminGroup}">${adminField('Gift title','title','')}${adminField('Shared key (optional; leave blank to generate)','canonicalKey','')}${adminField('Description','description','',true)}${adminField('Note','note','',true)}${adminField('Symbol / emoji','illustration','✧')}${adminField('Image URL (optional)','imageUrl','')}<button class="btn btn-dark" type="submit">+ Add gift</button></form>
-   <div class="admin-gift-list">${gifts.map(g=>`<article class="admin-gift-row"><div class="admin-gift-top"><div class="admin-gift-symbol">${esc(g.illustration)}</div><div><strong>${esc(g.title)}</strong><small>Key: ${esc(g.canonicalKey)}</small></div><select data-action="gift-status" data-key="${esc(g.canonicalKey)}" aria-label="Trạng thái ${esc(g.title)}"><option value="available" ${g.status==='available'?'selected':''}>Available</option><option value="reserved" ${g.status==='reserved'?'selected':''}>Reserved</option><option value="purchased" ${g.status==='purchased'?'selected':''}>Purchased</option></select><button class="admin-danger" data-action="delete-gift" data-id="${g.id}">Delete</button></div>
+   <form class="admin-add-grid" data-form="add-gift" data-slug="${adminGroup}">${adminField('Gift title','title','')}<label class="admin-field"><span>Link with an existing gift (optional)</span><select name="existingKey" data-action="existing-gift-key"><option value="">Create a new gift / custom shared key</option>${[...new Map(d.gifts.map(g=>[g.canonicalKey,g])).values()].sort((a,b)=>a.title.localeCompare(b.title,'vi')).map(g=>`<option value="${esc(g.canonicalKey)}">${esc(g.title)} — ${esc(g.canonicalKey)}</option>`).join('')}</select></label>${adminField('Shared key (optional; leave blank to generate)','canonicalKey','')}${adminField('Description','description','',true)}${adminField('Note','note','',true)}${adminField('Symbol / emoji','illustration','✧')}${adminField('Image URL (optional)','imageUrl','')}<button class="btn btn-dark" type="submit">+ Add gift</button></form>
+   <div class="admin-gift-list">${gifts.map(g=>`<article class="admin-gift-row"><div class="admin-gift-top"><div class="admin-gift-symbol">${esc(g.illustration)}</div><div><strong>${esc(g.title)}</strong><small>Key: ${esc(g.canonicalKey)} · ${Number(g.pickCount||0)} new pick(s)${g.allowMultiple?' · multiple picks':''}</small></div><label class="admin-field"><span>Pick mode</span><select data-action="gift-pick-mode" data-key="${esc(g.canonicalKey)}"><option value="single" ${!g.allowMultiple?'selected':''}>Single pick</option><option value="multiple" ${g.allowMultiple?'selected':''}>Multiple picks</option></select></label><select data-action="gift-status" data-key="${esc(g.canonicalKey)}" aria-label="Trạng thái ${esc(g.title)}"><option value="available" ${g.status==='available'?'selected':''}>Available</option><option value="reserved" ${g.status==='reserved'?'selected':''}>Reserved</option><option value="purchased" ${g.status==='purchased'?'selected':''}>Purchased</option></select><button class="admin-danger" data-action="delete-gift" data-id="${g.id}">Delete</button></div>
     <details class="admin-edit-details"><summary>Edit details ↓</summary><form data-form="edit-gift" data-id="${g.id}" class="admin-add-grid">${adminField('Name','title',g.title)}${adminField('Symbol','illustration',g.illustration)}${adminField('Description','description',g.description,true)}${adminField('Note','note',g.note,true)}${adminField('Image URL','imageUrl',g.imageUrl)}<button class="btn btn-dark" type="submit">Save details ↗</button></form></details></article>`).join('')}</div></section>`;
 }
 function adminPhotos(d:AdminData){
@@ -269,8 +269,8 @@ function adminPage(d:AdminData){
 }
 function closeModal(){modalRoot.innerHTML='';document.body.classList.remove('modal-open');}
 function giftModal(g:Gift){
-  const status=g.status==='available'?'Available to choose':g.status==='reserved'?'Someone has chosen this gift':'Already gifted';
-  modalRoot.innerHTML=`<div class="modal-backdrop" data-action="close-modal"><section class="gift-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" data-action="close-modal" aria-label="Đóng">×</button><div class="gift-modal-art">${g.imageUrl?`<img src="${esc(g.imageUrl)}" alt="${esc(g.title)}">`:`<div class="gift-modal-emoji">${esc(g.illustration)}</div>`}<span>THE BIRTHDAY COLLECTION ✴</span></div><div class="gift-modal-content"><span class="eyebrow">A LITTLE WISH / ${esc(config[g.slug].name.toUpperCase())}</span><h2 id="modal-title">${esc(g.title)}</h2><div class="modal-status ${g.status}">✦ ${esc(status)}</div><p>${esc(g.description)}</p><div class="modal-note"><strong>NOTE FROM THIÊN TRÍ</strong><p>${esc(g.note||'Một món quà nhỏ với rất nhiều tình cảm.')}</p></div><button class="btn btn-dark" data-action="reserve" data-id="${g.id}" ${g.status!=='available'?'disabled':''}>${g.status==='available'?'♡ I’ll choose this gift':'✓ This wish is already claimed'}</button><small>Choosing a gift anonymously reserves the same item across chapters. Ask Trí to undo the reservation if needed.</small></div></section></div>`;
+  const status=g.allowMultiple?('Open for everyone · '+Number(g.pickCount||0)+' new picks'+(g.status!=='available'?' · also picked before tracking':'')):g.status==='available'?'Available to choose':g.status==='reserved'?'Someone has chosen this gift':'Already gifted';
+  modalRoot.innerHTML=`<div class="modal-backdrop" data-action="close-modal"><section class="gift-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="modal-close" data-action="close-modal" aria-label="Đóng">×</button><div class="gift-modal-art">${g.imageUrl?`<img src="${esc(g.imageUrl)}" alt="${esc(g.title)}">`:`<div class="gift-modal-emoji">${esc(g.illustration)}</div>`}<span>THE BIRTHDAY COLLECTION ✴</span></div><div class="gift-modal-content"><span class="eyebrow">A LITTLE WISH / ${esc(config[g.slug].name.toUpperCase())}</span><h2 id="modal-title">${esc(g.title)}</h2><div class="modal-status ${g.status}">✦ ${esc(status)}</div><p>${esc(g.description)}</p><div class="modal-note"><strong>NOTE FROM THIÊN TRÍ</strong><p>${esc(g.note||'Một món quà nhỏ với rất nhiều tình cảm.')}</p></div><button class="btn btn-dark" data-action="reserve" data-id="${g.id}" ${!g.allowMultiple&&g.status!=='available'?'disabled':''}>${g.allowMultiple?'♡ Add my pick':g.status==='available'?'♡ I’ll choose this gift':'✓ This wish is already claimed'}</button><small>${g.allowMultiple?'This wish can be chosen by many people. Only new picks are counted, and the total is shared across chapters.':'Choosing a gift anonymously reserves the same item across chapters. Ask Trí to undo the reservation if needed.'}</small></div></section></div>`;
   document.body.classList.add('modal-open');(modalRoot.querySelector('.modal-close') as HTMLElement)?.focus();
 }
 async function renderRoute(){
@@ -315,10 +315,10 @@ async function refreshAdmin(){
 }
 async function reserveGift(id:string){
   if(!currentSection)return;
-  const gift=currentSection.gifts.find(g=>g.id===id);if(!gift||gift.status!=='available')return;
-  const yes=window.confirm(`Đánh dấu “${gift.title}” đã có người chọn? Trạng thái sẽ được đồng bộ ở mọi nhóm và chỉ Admin mới có thể hoàn tác.`);
+  const gift=currentSection.gifts.find(g=>g.id===id);if(!gift||(!gift.allowMultiple&&gift.status!=='available'))return;
+  const yes=window.confirm(gift.allowMultiple?`Thêm một lượt chọn cho “${gift.title}”? Món này vẫn mở cho những người khác.`:`Đánh dấu “${gift.title}” đã có người chọn? Trạng thái sẽ được đồng bộ ở mọi nhóm và chỉ Admin mới có thể hoàn tác.`);
   if(!yes)return;
-  try{await api(`/api/gifts/${id}/reserve`,jsonOpts('POST',{}));closeModal();toast('Đã giữ món quà này. Cảm ơn bạn ♡');await refreshSection();}
+  try{await api(`/api/gifts/${id}/reserve`,jsonOpts('POST',{}));closeModal();toast(gift.allowMultiple?'Đã ghi nhận lượt chọn mới. Cảm ơn bạn ♡':'Đã giữ món quà này. Cảm ơn bạn ♡');await refreshSection();}
   catch(e){toast(e instanceof Error?e.message:'Không thể giữ quà.','bad');await refreshSection();}
 }
 function requireConfirm(action:string){return window.confirm(`Bạn có chắc muốn ${action}? Thao tác này không thể hoàn tác.`);}
@@ -347,7 +347,7 @@ async function handleAction(button:HTMLElement){
     const g=currentSection?.gifts.find(g=>g.id===button.dataset.id);if(g)giftModal(g);return;
   }
   if(a==='surprise'){
-    const available=currentSection?.gifts.filter(g=>g.status==='available')||[];
+    const available=currentSection?.gifts.filter(g=>g.allowMultiple||g.status==='available')||[];
     if(!available.length){toast('Tất cả món quà đều đã được chọn. ♡','bad');return;}
     giftModal(available[Math.floor(Math.random()*available.length)]);return;
   }
@@ -444,6 +444,14 @@ document.addEventListener('submit',event=>{
 document.addEventListener('change',event=>{
   const target=event.target as HTMLInputElement|HTMLSelectElement;
   if(target.id==='music-volume'&&music){volume=Number(target.value)/100;music.volume=volume;}
+  if(target.dataset.action==='existing-gift-key'){
+    const form=target.closest('form');const key=form?.querySelector<HTMLInputElement>('input[name="canonicalKey"]');
+    if(key){key.value=target.value;key.readOnly=!!target.value;}
+  }
+  if(target.dataset.action==='gift-pick-mode'){
+    void (async()=>{try{await api('/api/admin/gift-pick-mode',jsonOpts('PUT',{canonicalKey:target.dataset.key,allowMultiple:target.value==='multiple'}));toast('Đã cập nhật chế độ chọn quà ở mọi nhóm.');await refreshAdmin();}
+    catch(e){toast(e instanceof Error?e.message:'Lỗi cập nhật chế độ.','bad');await refreshAdmin();}})();
+  }
   if(target.dataset.action==='gift-status'){
     void (async()=>{try{await api('/api/admin/gift-status',jsonOpts('PUT',{canonicalKey:target.dataset.key,status:target.value}));toast('Trạng thái quà đã cập nhật trên mọi wishlist.');await refreshAdmin();}
     catch(e){toast(e instanceof Error?e.message:'Lỗi cập nhật.','bad');await refreshAdmin();}})();
