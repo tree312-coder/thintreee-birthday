@@ -340,7 +340,7 @@ async function handle(req:any,res:any){
       const file=resolve(root,'.'+path);
       if(!existsSync(file))throw new HttpError(404,'Tệp không tồn tại.');
       const bytes=readFileSync(file), contentType=mimeTypes[extname(file)]||'application/octet-stream';
-      res.writeHead(200,{'Content-Type':contentType,'Content-Length':bytes.length,'Cache-Control':'public, max-age=3600'});res.end(req.method==='HEAD'?undefined:bytes);return;
+      res.writeHead(200,{'Content-Type':contentType,'Content-Length':bytes.length,'Cache-Control':path==='/client.js'?'no-store':'public, max-age=3600'});res.end(req.method==='HEAD'?undefined:bytes);return;
     }
     if(!['GET','HEAD'].includes(req.method||''))throw new HttpError(405,'Phương thức không được hỗ trợ.');
     const privatePage=path.match(/^\/collection\/(family|high-school|university)\/?$/);
