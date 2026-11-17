@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS gifts (
 );
 CREATE INDEX IF NOT EXISTS gifts_by_section ON gifts(slug,position);
 CREATE TABLE IF NOT EXISTS gift_claims (canonical_key TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'available', changed_at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS gift_pick_modes (canonical_key TEXT PRIMARY KEY, allow_multiple INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS gift_picks (id TEXT PRIMARY KEY, canonical_key TEXT NOT NULL, slug TEXT NOT NULL, created_at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS gift_picks_by_key ON gift_picks(canonical_key,created_at);
 CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, slug TEXT NOT NULL, caption TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'gallery', image_id TEXT, position INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, slug TEXT NOT NULL, mime TEXT NOT NULL, bytes BLOB NOT NULL, created_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS wishes (
@@ -137,6 +140,8 @@ async function initialize(){
         await claims.run(row[0],'available',Date.now());
       }
     }
+    // Enable multi-pick for existing handwritten letters without changing their legacy reservation.
+    await db.prepare("INSERT OR IGNORE INTO gift_pick_modes(canonical_key,allow_multiple) SELECT DISTINCT canonical_key,1 FROM gifts WHERE title='Thư tay'").run();
     const photosNum=(await db.prepare('SELECT count(*) AS c FROM photos').get() as {c:number}).c;
     if(!Number(photosNum)){
       const insert=db.prepare('INSERT INTO photos(id,slug,caption,kind,image_id,position) VALUES(?,?,?,?,NULL,?)');
@@ -169,7 +174,10 @@ export async function photosFor(slug:string) {
 }
 export async function giftsFor(slug:string) {
   return db.prepare(`SELECT g.id,g.slug,g.canonical_key AS canonicalKey,g.title,g.description,g.note,g.illustration,g.image_url AS imageUrl,g.position,
-    COALESCE(c.status,'available') AS status FROM gifts g LEFT JOIN gift_claims c ON c.canonical_key=g.canonical_key WHERE g.slug=? ORDER BY g.position,g.id`).all(slug);
+    COALESCE(c.status,'available') AS status, COALESCE(m.allow_multiple,0) AS allowMultiple,
+    (SELECT COUNT(*) FROM gift_picks p WHERE p.canonical_key=g.canonical_key) AS pickCount
+    FROM gifts g LEFT JOIN gift_claims c ON c.canonical_key=g.canonical_key
+    LEFT JOIN gift_pick_modes m ON m.canonical_key=g.canonical_key WHERE g.slug=? ORDER BY g.position,g.id`).all(slug);
 }
 export async function sectionFor(slug:Slug) {
   const section=await db.prepare('SELECT * FROM sections WHERE slug=?').get(slug);
